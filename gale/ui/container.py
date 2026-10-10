@@ -157,3 +157,65 @@ class Container(Widget):
         next_index = (current_index + dy) % len(focusable)
         self._focus_only(focusable[next_index])
         return True
+
+
+class SpatialContainer(Container):
+    """
+    A Container that navigates its children spatially in 2D instead of relying on
+    add-order/list index. It supports 4-way directions as well as composite
+    (diagonal) directions. It calculates the distances between the center of the
+    currently focused widget and candidates in the given direction, prioritizing
+    the closest widget that aligns with the input direction.
+
+    Note: Gale's UI components only provide the `on_navigate` interface. Each game
+    must implement its own menu navigation input logic (e.g., handling analog
+    stick deadzones, cooldowns, or key mappings) and pass the resulting direction
+    vector to the UI root.
+    """
+
+    def _move_focus(self, direction: Direction) -> bool:
+        focusable = self._focusable_children()
+
+        if not focusable:
+            return False
+
+        dx, dy = direction
+        current = self._focused_child()
+
+        if current is None:
+            self._focus_only(focusable[0])
+            return True
+
+        best_child = None
+        best_score = float("inf")
+
+        cx1 = current.x + getattr(current, "width", 0) / 2
+        cy1 = current.y + getattr(current, "height", 0) / 2
+
+        for child in focusable:
+            if child is current:
+                continue
+
+            cx2 = child.x + getattr(child, "width", 0) / 2
+            cy2 = child.y + getattr(child, "height", 0) / 2
+
+            vx = cx2 - cx1
+            vy = cy2 - cy1
+
+            dot = vx * dx + vy * dy
+
+            if dot > 0:
+                dist = (vx**2 + vy**2) ** 0.5
+                cross = abs(vx * dy - vy * dx)
+
+                score = dist + cross * 2
+
+                if score < best_score:
+                    best_score = score
+                    best_child = child
+
+        if best_child is not None:
+            self._focus_only(best_child)
+            return True
+
+        return False
