@@ -119,7 +119,9 @@ class Tween(TimerItemBase):
             return
 
         for obj, data in self.plan:
-            value = data["initial"] + data["change"] * self.ease_function(self.timer / self.time)
+            value = data["initial"] + data["change"] * self.ease_function(
+                self.timer / self.time
+            )
             if data["is_dict"]:
                 obj[data["key"]] = value
             else:
