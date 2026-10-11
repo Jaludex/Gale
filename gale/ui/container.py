@@ -25,7 +25,8 @@ class Container(Widget):
     children in reverse add order (top-most first) and stop at the
     first one that consumes the event. on_confirm/on_navigate are
     forwarded only to the currently focused child; an unconsumed
-    on_navigate instead moves focus to the next focusable sibling.
+    on_navigate instead moves focus to the next focusable sibling
+    (linearly by add order by default, or spatially in 2D if spatial=True).
 
     Usage example:
 
@@ -44,8 +45,10 @@ class Container(Widget):
         children: Optional[Sequence[Widget]] = None,
         theme: Optional[Theme] = None,
         visible: bool = True,
+        spatial: bool = False,
     ) -> None:
         super().__init__(x, y, width, height, theme=theme, visible=visible)
+        self.spatial: bool = spatial
         self.children: List[Widget] = []
 
         for child in children or []:
@@ -142,6 +145,21 @@ class Container(Widget):
             child.focused = child is widget
 
     def _move_focus(self, direction: Direction) -> bool:
+        """
+        Move focus to another focusable child in the given direction,
+        delegating to either 2D spatial navigation or linear list-order
+        navigation based on self.spatial.
+        """
+        if self.spatial:
+            return self._spatial_move_focus(direction)
+        return self._linear_move_focus(direction)
+
+    def _linear_move_focus(self, direction: Direction) -> bool:
+        """
+        Move focus forward or backward along the vertical axis based on
+        list index (add order), wrapping around cyclically when reaching
+        either end. Horizontal navigation (dy == 0) is ignored.
+        """
         focusable = self._focusable_children()
 
         if not focusable:
@@ -158,22 +176,14 @@ class Container(Widget):
         self._focus_only(focusable[next_index])
         return True
 
-
-class SpatialContainer(Container):
-    """
-    A Container that navigates its children spatially in 2D instead of relying on
-    add-order/list index. It supports 4-way directions as well as composite
-    (diagonal) directions. It calculates the distances between the center of the
-    currently focused widget and candidates in the given direction, prioritizing
-    the closest widget that aligns with the input direction.
-
-    Note: Gale's UI components only provide the `on_navigate` interface. Each game
-    must implement its own menu navigation input logic (e.g., handling analog
-    stick deadzones, cooldowns, or key mappings) and pass the resulting direction
-    vector to the UI root.
-    """
-
-    def _move_focus(self, direction: Direction) -> bool:
+    def _spatial_move_focus(self, direction: Direction) -> bool:
+        """
+        Move focus spatially across 2D space. Evaluates candidate widgets
+        by calculating centroid distance and directional alignment (dot
+        product), penalizing off-axis deviations. Supports 4-way and
+        diagonal inputs, and stops at edges (returning False) rather than
+        wrapping around.
+        """
         focusable = self._focusable_children()
 
         if not focusable:
@@ -207,7 +217,6 @@ class SpatialContainer(Container):
             if dot > 0:
                 dist = (vx**2 + vy**2) ** 0.5
                 cross = abs(vx * dy - vy * dx)
-
                 score = dist + cross * 2
 
                 if score < best_score:
